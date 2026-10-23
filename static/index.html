@@ -1,0 +1,747 @@
+<!doctype html>
+<html lang="en" data-bs-theme="dark">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Kiosk</title>
+    <link href="vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
+    <style>
+        html,
+        body {
+            height: 100%;
+            overflow: hidden;
+        }
+
+        body {
+            background: radial-gradient(circle at top left, #1e3a5f, #0d1117 60%);
+        }
+
+        .glass {
+            backdrop-filter: blur(8px);
+            background-color: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        #app {
+            height: 100%;
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            gap: 1rem;
+            padding: 1rem;
+        }
+
+        @media (max-width: 767px) {
+            #app {
+                grid-template-columns: 1fr;
+                grid-template-rows: 40% 1fr;
+            }
+        }
+
+        #list,
+        #classes {
+            overflow-y: auto;
+            min-height: 0;
+        }
+
+        .pane {
+            flex: 1 1 0;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .pane+.pane {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid rgba(255, 255, 255, .1);
+        }
+
+        .row-form {
+            display: flex;
+            gap: .5rem;
+            margin-bottom: .5rem;
+        }
+
+        .cls {
+            display: flex;
+            align-items: center;
+            gap: .6rem;
+            width: 100%;
+            padding: .45rem .6rem;
+            border: 0;
+            border-radius: .75rem;
+            background: transparent;
+            color: inherit;
+            text-align: left;
+            font-size: .9rem;
+        }
+
+        .cls:hover {
+            background: rgba(255, 255, 255, .08);
+        }
+
+        .cls.active {
+            background: rgba(13, 110, 253, .35);
+        }
+
+        .cls i {
+            width: .9rem;
+            height: .9rem;
+            border-radius: 50%;
+            flex: none;
+        }
+
+        .thumb {
+            display: flex;
+            align-items: center;
+            gap: .75rem;
+            width: 100%;
+            padding: .4rem;
+            border: 0;
+            border-radius: .75rem;
+            background: transparent;
+            color: inherit;
+            text-align: left;
+        }
+
+        .thumb:hover {
+            background: rgba(255, 255, 255, .08);
+        }
+
+        .thumb.active {
+            background: rgba(13, 110, 253, .35);
+        }
+
+        .thumb img {
+            width: 56px;
+            height: 56px;
+            object-fit: cover;
+            border-radius: .5rem;
+            flex: none;
+            background: #000;
+        }
+
+        .thumb span {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: .875rem;
+        }
+
+        #viewer {
+            position: relative;
+            min-height: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        #viewer img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            user-select: none;
+            -webkit-user-drag: none;
+            transform-origin: center;
+        }
+
+        #viewer {
+            touch-action: none;
+            cursor: grab;
+        }
+
+        #viewer.panning {
+            cursor: grabbing;
+        }
+
+        #viewer.tool:not(.panning) {
+            cursor: crosshair;
+        }
+
+        #overlay {
+            position: absolute;
+            pointer-events: none;
+            transform-origin: center;
+        }
+
+        #stage {
+            display: grid;
+            grid-template-rows: auto 1fr;
+            gap: 1rem;
+            min-height: 0;
+            min-width: 0;
+        }
+
+        #zoom {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+        }
+
+        #info {
+            position: absolute;
+            top: 1rem;
+            left: 1rem;
+            padding: .5rem .75rem;
+            border-radius: .75rem;
+            background: rgba(0, 0, 0, .55);
+            font-size: .8rem;
+            pointer-events: none;
+        }
+
+        #info dt {
+            float: left;
+            clear: left;
+            width: 6.5rem;
+            font-weight: 400;
+            color: var(--bs-secondary-color);
+        }
+
+        #info dd {
+            margin: 0 0 .1rem 6.5rem;
+        }
+
+        .nav-btn {
+            display: grid;
+            place-items: center;
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 3rem;
+            height: 3rem;
+            font-size: 1.5rem;
+            line-height: 1;
+        }
+
+        #caption {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: .5rem 1rem;
+            background: linear-gradient(transparent, rgba(0, 0, 0, .7));
+            font-size: .875rem;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app">
+        <aside class="glass rounded-4 p-3 d-flex flex-column min-h-0" style="min-height:0">
+            <section class="pane">
+                <h1 class="h5 fw-bold mb-3">Immagini</h1>
+                <button id="open" type="button" class="btn btn-primary rounded-pill mb-2">Apri cartella…</button>
+                <div id="count" class="small text-body-secondary mb-2">Nessuna cartella selezionata</div>
+                <div id="list" class="flex-grow-1"></div>
+            </section>
+
+            <section class="pane">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <h2 class="h5 fw-bold mb-0">Classi</h2>
+                    <button id="add-class" type="button" class="btn btn-outline-light btn-sm rounded-pill"
+                        title="Aggiungi classe">+ Classe</button>
+                </div>
+                <form id="cls-form" class="row-form" hidden>
+                    <input id="cls-name" class="form-control form-control-sm" placeholder="Nome classe" autocomplete="off">
+                    <button class="btn btn-primary btn-sm" type="submit">Aggiungi</button>
+                </form>
+                <div id="classes" class="flex-grow-1"></div>
+                <button id="save" type="button" class="btn btn-success rounded-pill mt-2" disabled>Salva etichette (YOLO OBB)</button>
+                <div id="status" class="small text-body-secondary mt-1"></div>
+            </section>
+        </aside>
+
+        <div id="stage">
+        <header id="topbar" class="glass rounded-4 px-3 py-2 d-flex align-items-center gap-3">
+            <span class="small text-body-secondary text-uppercase fw-semibold">Tools</span>
+            <div id="tools" class="btn-group" role="group" aria-label="Tools">
+                <button type="button" class="btn btn-dark btn-sm d-inline-flex align-items-center justify-content-center"
+                    style="width:3rem;height:3rem" data-tool="rrect" aria-pressed="false" disabled
+                    aria-label="Rotated rect"
+                    title="Rotated rect: 3 click sui vertici (Esc annulla, Ctrl+Z annulla ultimo)">
+                    <svg width="28" height="28" style="display:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+                        stroke-linejoin="round" aria-hidden="true">
+                        <g transform="rotate(-30 12 12)">
+                            <rect x="4" y="7.5" width="16" height="9" />
+                            <g fill="currentColor" stroke="none">
+                                <circle cx="4" cy="7.5" r="1.8" />
+                                <circle cx="20" cy="7.5" r="1.8" />
+                                <circle cx="20" cy="16.5" r="1.8" />
+                                <circle cx="4" cy="16.5" r="1.8" />
+                            </g>
+                        </g>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <main id="viewer" class="glass rounded-4">
+            <div id="empty" class="text-body-secondary text-center p-4">
+                Seleziona una cartella per visualizzare le immagini.
+            </div>
+            <img id="preview" alt="" hidden>
+            <svg id="overlay" xmlns="http://www.w3.org/2000/svg" hidden></svg>
+            <button id="prev" type="button" class="nav-btn btn btn-dark rounded-circle p-0" style="left:1rem" hidden
+                aria-label="Precedente">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="15 5 8 12 15 19" />
+                </svg>
+            </button>
+            <button id="next" type="button" class="nav-btn btn btn-dark rounded-circle p-0" style="right:1rem" hidden
+                aria-label="Successiva">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="9 5 16 12 9 19" />
+                </svg>
+            </button>
+            <div id="caption" hidden></div>
+            <dl id="info" class="mb-0" hidden></dl>
+            <div id="zoom" class="btn-group" hidden>
+                <button id="zout" type="button" class="btn btn-dark" aria-label="Riduci">&minus;</button>
+                <button id="zreset" type="button" class="btn btn-dark" style="min-width:4.5rem">100%</button>
+                <button id="zin" type="button" class="btn btn-dark" aria-label="Ingrandisci">+</button>
+            </div>
+        </main>
+        </div>
+    </div>
+
+    <script src="vendor/bootstrap/bootstrap.bundle.min.js"></script>
+    <script>
+        const $ = id => document.getElementById(id);
+        const list = $('list'), preview = $('preview');
+        const prev = $('prev'), next = $('next'), caption = $('caption'), empty = $('empty');
+        let items = [], index = -1;
+
+        let imagesDir = '';
+
+        // Una sola fetch per immagine: il blob serve a preview e info; i vicini sono precaricati
+        const KEEP = 3;
+        function getBlob(it) {
+            it.blob ??= fetch(it.url)
+                .then(r => r.ok ? r.blob() : Promise.reject(new Error(r.statusText)))
+                .then(b => (it.objUrl = URL.createObjectURL(b), b));
+            return it.blob;
+        }
+        function evict(i) {
+            items.forEach((it, n) => {
+                if (!it.blob || Math.abs(n - i) <= KEEP) return;
+                if (it.objUrl) URL.revokeObjectURL(it.objUrl);
+                it.blob = it.objUrl = null;
+            });
+        }
+
+        const thumbObserver = new IntersectionObserver(entries => entries.forEach(e => {
+            if (!e.isIntersecting) return;
+            e.target.src = e.target.dataset.src;
+            thumbObserver.unobserve(e.target);
+        }), { root: list, rootMargin: '50px' });
+
+        function load(dir, names) {
+            items.forEach(it => it.objUrl && URL.revokeObjectURL(it.objUrl));
+            imagesDir = dir;
+            index = -1;
+            items = [...names]
+                .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+                .map(n => ({ name: n, url: `/api/image?name=${encodeURIComponent(n)}`, rects: [] }));
+
+            $('count').textContent = items.length
+                ? `${items.length} immagini trovate`
+                : 'Nessuna immagine trovata';
+
+            list.replaceChildren(...items.map((it, i) => {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'thumb';
+                const img = document.createElement('img');
+                img.dataset.src = it.url;
+                img.decoding = 'async';
+                img.fetchPriority = 'low';
+                img.alt = '';
+                thumbObserver.observe(img);
+                const s = document.createElement('span');
+                s.textContent = it.name;
+                s.title = it.name;
+                b.append(img, s);
+                b.addEventListener('click', () => select(i));
+                return b;
+            }));
+
+            select(items.length ? 0 : -1);
+        }
+
+        function select(i) {
+            index = i;
+            const has = i >= 0;
+            empty.hidden = has;
+            preview.hidden = caption.hidden = prev.hidden = next.hidden = $('zoom').hidden = !has;
+            updateToolState();
+            overlay.toggleAttribute('hidden', !has);
+            pending = []; cursor = null;
+            list.querySelectorAll('.thumb').forEach((el, n) => el.classList.toggle('active', n === i));
+            if (!has) { $('info').hidden = true; resetView(); return; }
+            showInfo(i);
+            const it = items[i];
+            getBlob(it).then(() => {
+                if (index !== i) return;
+                if (preview.src === it.objUrl) resetView();
+                else preview.src = it.objUrl;
+                [1, -1, 2].forEach(d => items[i + d] && getBlob(items[i + d]).catch(() => { }));
+            }, () => { });
+            evict(i);
+            caption.textContent = `${i + 1} / ${items.length} — ${items[i].name}`;
+            list.children[i].scrollIntoView({ block: 'nearest' });
+        }
+
+        const viewer = $('viewer');
+
+        function fmtSize(n) {
+            if (n < 1024) return `${n} B`;
+            if (n < 1048576) return `${(n / 1024).toFixed(1)} KB`;
+            return `${(n / 1048576).toFixed(2)} MB`;
+        }
+
+        // Legge canali e pixel format dall'header del file (PNG, JPEG, BMP, GIF, WebP)
+        function parseFormat(b) {
+            const v = new DataView(b.buffer, b.byteOffset, b.byteLength);
+            const ascii = (o, n) => String.fromCharCode(...b.subarray(o, o + n));
+            if (ascii(1, 3) === 'PNG') {
+                const depth = b[24], type = b[25];
+                const t = { 0: ['Grayscale', 1], 2: ['RGB', 3], 3: ['Indexed', 1], 4: ['Gray+Alpha', 2], 6: ['RGBA', 4] }[type];
+                return t && { format: t[0], channels: t[1], depth };
+            }
+            if (b[0] === 0xFF && b[1] === 0xD8) {
+                let o = 2;
+                while (o + 9 < b.length) {
+                    if (b[o] !== 0xFF) { o++; continue; }
+                    const m = b[o + 1];
+                    if (m >= 0xC0 && m <= 0xCF && ![0xC4, 0xC8, 0xCC].includes(m)) {
+                        const c = b[o + 9];
+                        const f = { 1: 'Grayscale', 3: 'YCbCr', 4: 'CMYK' }[c];
+                        return f && { format: f, channels: c, depth: b[o + 4] };
+                    }
+                    o += 2 + v.getUint16(o + 2);
+                }
+                return null;
+            }
+            if (ascii(0, 2) === 'BM') {
+                const bpp = v.getUint16(28, true);
+                const f = { 1: 'Indexed', 4: 'Indexed', 8: 'Indexed', 16: 'BGR555', 24: 'BGR', 32: 'BGRA' }[bpp];
+                return f && { format: f, channels: bpp >= 24 ? bpp / 8 : 1, depth: bpp >= 24 ? 8 : bpp };
+            }
+            if (ascii(0, 3) === 'GIF') return { format: 'Indexed', channels: 1, depth: 8 };
+            if (ascii(0, 4) === 'RIFF' && ascii(8, 4) === 'WEBP') {
+                const k = ascii(12, 4);
+                if (k === 'VP8X') return (b[20] & 0x10) ? { format: 'YUV+Alpha', channels: 4, depth: 8 } : { format: 'YUV', channels: 3, depth: 8 };
+                if (k === 'VP8L') return { format: 'RGBA', channels: 4, depth: 8 };
+                return { format: 'YUV', channels: 3, depth: 8 };
+            }
+            return null;
+        }
+
+        async function showInfo(i) {
+            const it = items[i], info = $('info');
+            info.hidden = false;
+            const rows = [];
+            const draw = () => info.replaceChildren(...rows.flatMap(([k, v]) => {
+                const dt = document.createElement('dt'), dd = document.createElement('dd');
+                dt.textContent = k; dd.textContent = v;
+                return [dt, dd];
+            }));
+            draw();
+            const blob = await getBlob(it).catch(() => null);
+            if (!blob || index !== i) return;
+            rows.push(['Dimensione file', fmtSize(blob.size)], ['Tipo', blob.type || '—']);
+            draw();
+            const img = new Image();
+            img.src = it.objUrl;
+            const [dim, head] = await Promise.all([
+                img.decode().then(() => `${img.naturalWidth} × ${img.naturalHeight} px`, () => '—'),
+                blob.slice(0, 262144).arrayBuffer().then(a => parseFormat(new Uint8Array(a)), () => null)
+            ]);
+            if (index !== i) return;
+            rows.unshift(['Risoluzione', dim]);
+            rows.push(['Canali', head ? String(head.channels) : '—'],
+                ['Pixel format', head ? `${head.format} ${head.depth}-bit` : '—']);
+            draw();
+        }
+
+        let scale = 1, tx = 0, ty = 0;
+        const MIN = 1, MAX = 16;
+
+        function applyView() {
+            const t = `translate(${tx}px, ${ty}px) scale(${scale})`;
+            preview.style.transform = overlay.style.transform = t;
+            $('zreset').textContent = `${Math.round(scale * 100)}%`;
+            redraw();
+        }
+
+        const overlay = $('overlay');
+        const SVGNS = 'http://www.w3.org/2000/svg';
+        let tool = null, pending = [], cursor = null;
+
+        // L'overlay ricalca il box dell'immagine e usa le sue coordinate native
+        function syncOverlay() {
+            overlay.style.left = preview.offsetLeft + 'px';
+            overlay.style.top = preview.offsetTop + 'px';
+            overlay.style.width = preview.offsetWidth + 'px';
+            overlay.style.height = preview.offsetHeight + 'px';
+            overlay.setAttribute('viewBox', `0 0 ${preview.naturalWidth || 1} ${preview.naturalHeight || 1}`);
+        }
+
+        function toImage(e) {
+            const r = preview.getBoundingClientRect();
+            return {
+                x: (e.clientX - r.left) / r.width * preview.naturalWidth,
+                y: (e.clientY - r.top) / r.height * preview.naturalHeight
+            };
+        }
+
+        // a,b,c vertici consecutivi; c viene proiettato per avere angolo retto in b
+        function completeRect([a, b, c]) {
+            const ux = b.x - a.x, uy = b.y - a.y, len = Math.hypot(ux, uy) || 1;
+            const nx = -uy / len, ny = ux / len;
+            const h = (c.x - b.x) * nx + (c.y - b.y) * ny;
+            return [a, b, { x: b.x + nx * h, y: b.y + ny * h }, { x: a.x + nx * h, y: a.y + ny * h }];
+        }
+
+        function redraw() {
+            overlay.replaceChildren();
+            if (index < 0) return;
+            const k = preview.naturalWidth / (preview.getBoundingClientRect().width || 1);
+            const add = (tag, attrs) => {
+                const el = document.createElementNS(SVGNS, tag);
+                for (const n in attrs) el.setAttribute(n, attrs[n]);
+                overlay.append(el);
+                return el;
+            };
+            const sw = 2 * k, dash = `${6 * k} ${4 * k}`;
+            const cur = classes[activeClass];
+            const poly = (pts, c, extra = {}) => add('polygon', {
+                points: pts.map(p => `${p.x},${p.y}`).join(' '),
+                fill: c.fill, stroke: c.color, 'stroke-width': sw, ...extra
+            });
+            items[index].rects.forEach(r => {
+                const c = classes[r.cls];
+                poly(r.pts, c);
+                const top = r.pts.reduce((a, p) => (p.y < a.y ? p : a));
+                add('text', {
+                    x: top.x, y: top.y - 4 * k, fill: c.color, stroke: '#000', 'stroke-width': 3 * k,
+                    'paint-order': 'stroke', 'font-size': 13 * k, 'font-weight': 600,
+                    'font-family': 'system-ui, sans-serif'
+                }).textContent = c.name;
+            });
+            if (cur && cursor && pending.length === 1)
+                add('line', { x1: pending[0].x, y1: pending[0].y, x2: cursor.x, y2: cursor.y, stroke: cur.color, 'stroke-width': sw, 'stroke-dasharray': dash });
+            if (cur && cursor && pending.length === 2)
+                poly(completeRect([...pending, cursor]), cur, { 'stroke-dasharray': dash });
+            pending.forEach(p => add('circle', { cx: p.x, cy: p.y, r: 4 * k, fill: cur ? cur.color : '#fff' }));
+        }
+
+        function setTool(name) {
+            tool = name;
+            pending = []; cursor = null;
+            viewer.classList.toggle('tool', !!name);
+            document.querySelectorAll('[data-tool]').forEach(b => {
+                const on = b.dataset.tool === name;
+                b.classList.toggle('btn-primary', on);
+                b.classList.toggle('btn-dark', !on);
+                b.setAttribute('aria-pressed', on);
+            });
+            redraw();
+        }
+
+        function addPoint(p) {
+            pending.push(p);
+            if (pending.length === 3) {
+                const it = items[index];
+                it.w = preview.naturalWidth; it.h = preview.naturalHeight;
+                it.rects.push({ cls: activeClass, pts: completeRect(pending) });
+                pending = []; cursor = null;
+            }
+            redraw();
+        }
+
+        const classes = [];
+        let activeClass = -1;
+
+        function updateToolState() {
+            const ok = index >= 0 && activeClass >= 0;
+            document.querySelectorAll('[data-tool]').forEach(b => b.disabled = !ok);
+            if (!ok && tool) setTool(null);
+        }
+
+        function renderClasses() {
+            $('classes').replaceChildren(...classes.map((c, i) => {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'cls' + (i === activeClass ? ' active' : '');
+                const sw = document.createElement('i');
+                sw.style.background = c.color;
+                const s = document.createElement('span');
+                s.textContent = c.name;
+                b.append(sw, s);
+                b.addEventListener('click', () => selectClass(i === activeClass ? -1 : i));
+                return b;
+            }));
+            $('save').disabled = !classes.length;
+        }
+
+        function selectClass(i) {
+            activeClass = i;
+            pending = []; cursor = null;
+            renderClasses();
+            updateToolState();
+            redraw();
+        }
+
+        function addClass(name) {
+            name = name.trim();
+            if (!name || classes.some(c => c.name === name)) return;
+            const h = Math.round(classes.length * 137.508) % 360;
+            classes.push({ name, color: `hsl(${h} 75% 55%)`, fill: `hsl(${h} 75% 55% / .15)` });
+            selectClass(classes.length - 1);
+        }
+
+        $('add-class').addEventListener('click', () => {
+            const f = $('cls-form');
+            f.hidden = !f.hidden;
+            if (!f.hidden) $('cls-name').focus();
+        });
+        $('cls-form').addEventListener('submit', e => {
+            e.preventDefault();
+            addClass($('cls-name').value);
+            $('cls-name').value = '';
+        });
+        $('cls-name').addEventListener('keydown', e => {
+            if (e.key === 'Escape') $('cls-form').hidden = true;
+        });
+
+        // Il backend C++ chiede la cartella e scrive i file (POST /api/save)
+        async function save() {
+            const images = items.filter(it => it.rects.length).map(it => ({
+                name: it.name.replace(/\.[^.]+$/, ''), w: it.w, h: it.h,
+                rects: it.rects.map(r => ({ cls: r.cls, pts: r.pts.map(p => [p.x, p.y]) }))
+            }));
+            try {
+                const res = await fetch('/api/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ dir: imagesDir, classes: classes.map(c => c.name), images })
+                });
+                const text = await res.text();
+                $('status').textContent = !res.ok ? `Errore: ${text}`
+                    : text === 'CANCELLED' ? 'Salvataggio annullato'
+                        : `Salvati ${images.length} file in labels/ + data.yaml (${text.split(' ').slice(2).join(' ')})`;
+            } catch (e) {
+                $('status').textContent = `Errore: ${e.message}`;
+            }
+        }
+        $('save').addEventListener('click', save);
+
+        document.querySelectorAll('[data-tool]').forEach(b =>
+            b.addEventListener('click', () => setTool(tool === b.dataset.tool ? null : b.dataset.tool)));
+        // Zoom, overlay e immagine cambiano insieme, quando la nuova immagine è pronta
+        preview.addEventListener('load', () => { syncOverlay(); resetView(); });
+        window.addEventListener('resize', () => { syncOverlay(); redraw(); });
+
+        function resetView() {
+            scale = 1; tx = ty = 0;
+            applyView();
+        }
+
+        // cx, cy: punto di zoom relativo al centro del viewer
+        function zoomAt(factor, cx = 0, cy = 0) {
+            const s = Math.min(MAX, Math.max(MIN, scale * factor));
+            const k = s / scale;
+            tx = cx - (cx - tx) * k;
+            ty = cy - (cy - ty) * k;
+            scale = s;
+            if (scale === MIN) tx = ty = 0;
+            applyView();
+        }
+
+        viewer.addEventListener('wheel', e => {
+            if (preview.hidden) return;
+            e.preventDefault();
+            const r = viewer.getBoundingClientRect();
+            zoomAt(Math.exp(-e.deltaY * 0.0015),
+                e.clientX - r.left - r.width / 2, e.clientY - r.top - r.height / 2);
+        }, { passive: false });
+
+        let drag = null;
+        viewer.addEventListener('pointerdown', e => {
+            if (preview.hidden || e.target.closest('button')) return;
+            drag = { x: e.clientX, y: e.clientY, tx, ty, moved: false };
+            viewer.setPointerCapture(e.pointerId);
+            viewer.classList.add('panning');
+        });
+        viewer.addEventListener('pointermove', e => {
+            if (tool && !preview.hidden && !e.target.closest('button')) {
+                cursor = toImage(e);
+                if (pending.length && !drag) redraw();
+            }
+            if (!drag) return;
+            if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 4) drag.moved = true;
+            if (!drag.moved) return;
+            tx = drag.tx + e.clientX - drag.x;
+            ty = drag.ty + e.clientY - drag.y;
+            applyView();
+        });
+        const endDrag = () => { drag = null; viewer.classList.remove('panning'); };
+        viewer.addEventListener('pointerup', e => {
+            if (drag && !drag.moved && tool && e.button === 0) addPoint(toImage(e));
+            endDrag();
+        });
+        viewer.addEventListener('pointercancel', endDrag);
+        viewer.addEventListener('dblclick', e => {
+            if (tool || preview.hidden || e.target.closest('button')) return;
+            if (scale > 1) { resetView(); return; }
+            const r = viewer.getBoundingClientRect();
+            zoomAt(3, e.clientX - r.left - r.width / 2, e.clientY - r.top - r.height / 2);
+        });
+
+        $('zin').addEventListener('click', () => zoomAt(1.5));
+        $('zout').addEventListener('click', () => zoomAt(1 / 1.5));
+        $('zreset').addEventListener('click', resetView);
+
+        const step = d => items.length && select((index + d + items.length) % items.length);
+
+        $('open').addEventListener('click', async () => {
+            try {
+                const res = await fetch('/api/open', { method: 'POST' });
+                const body = await res.text();
+                if (!res.ok) throw new Error(body);
+                if (body === 'CANCELLED') return;
+                const data = JSON.parse(body);
+                load(data.dir, data.images);
+            } catch (e) {
+                $('count').textContent = `Errore: ${e.message}`;
+            }
+        });
+        prev.addEventListener('click', () => step(-1));
+        next.addEventListener('click', () => step(1));
+        document.addEventListener('keydown', e => {
+            if (e.target.matches('input, textarea')) return;
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); step(-1); }
+            if (e.key === '+' || e.key === '=') zoomAt(1.5);
+            if (e.key === '-') zoomAt(1 / 1.5);
+            if (e.key === '0') resetView();
+            if (tool && e.key === 'Escape') { pending = []; cursor = null; redraw(); }
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && index >= 0) {
+                e.preventDefault();
+                if (pending.length) pending.pop(); else items[index].rects.pop();
+                redraw();
+            }
+            if (tool && e.key === 'Backspace') {
+                if (pending.length) pending.pop(); else if (index >= 0) items[index].rects.pop();
+                redraw();
+            }
+            if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); step(1); }
+        });
+    </script>
+</body>
+
+</html>
